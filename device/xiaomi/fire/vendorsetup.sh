@@ -5,6 +5,14 @@ _fox_top="$(gettop 2>/dev/null)"
 if [ -n "$_fox_top" ] && [ -f "$_fox_top/$_fox_device_path/Magisk/Magisk-v28.0.zip" ]; then
   export FOX_USE_SPECIFIC_MAGISK_ZIP="$_fox_top/$_fox_device_path/Magisk/Magisk-v28.0.zip"
 fi
+
+if [ -n "$_fox_top" ]; then
+  export FOX_LOCAL_CALLBACK_SCRIPT="$_fox_top/$_fox_device_path/repack_vendor_boot.sh"
+  if [ -z "${FOX_STOCK_VENDOR_BOOT:-}" ] && \
+     [ -f "$_fox_top/$_fox_device_path/prebuilt/stock/vendor_boot.img" ]; then
+    export FOX_STOCK_VENDOR_BOOT="$_fox_top/$_fox_device_path/prebuilt/stock/vendor_boot.img"
+  fi
+fi
 unset _fox_device_path _fox_top
 
 # Build identity
@@ -26,6 +34,7 @@ export OF_DONT_PATCH_ENCRYPTED_DEVICE=1
 # A/B, virtual A/B and dynamic partitions
 export FOX_AB_DEVICE=1
 export FOX_VIRTUAL_AB_DEVICE=1
+export FOX_VENDOR_BOOT_RECOVERY=1
 export OF_ENABLE_LPTOOLS=1
 export OF_IGNORE_LOGICAL_MOUNT_ERRORS=1
 
@@ -49,9 +58,9 @@ export OF_FL_PATH1="/tmp/fox_flashlight"
 # Installer behavior
 export OF_NO_TREBLE_COMPATIBILITY_CHECK=1
 export OF_DISABLE_MIUI_OTA_BY_DEFAULT=1
-export OF_SUPPORT_ALL_BLOCK_OTA_UPDATES=1
 export OF_NO_SPLASH_CHANGE=1
 export FOX_INSTALLER_DISABLE_AUTOREBOOT=1
+export FOX_INSTALLER_VENDOR_BOOT_RAMDISK_INSTALL=0
 
 # Backup defaults
 export OF_QUICK_BACKUP_LIST="/boot;/data;/super;"

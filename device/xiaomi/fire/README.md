@@ -69,68 +69,68 @@ $~$
 
 ## How to build
 
-1. Set up the build environment following the instructions [here](https://wiki.orangefox.tech/en/dev/building#h-0-prepare-the-build-environment-debian-based-linux-distros)
+This branch targets the stable OrangeFox 12.1 source tree and Android boot
+header v3. Recovery lives in `vendor_boot`; it is not a recovery-as-boot build.
+The final image is repacked from an exact stock `vendor_boot.img` so the stock
+DTB and all 167 proprietary kernel modules remain byte-for-byte unchanged.
 
-2. In the root folder of the fetched [repo](https://wiki.orangefox.tech/en/dev/building#h-1-sync-orangefox-sources-and-minimal-manifest), clone the device tree:
-
-```bash
-git clone https://github.com/mahdi-salimi05/ofrp_device_xiaomi_fire.git device/xiaomi/fire
-```
-
-3. To build:
+Place the contents of this repository in the OrangeFox source root, then make
+the verified stock input available outside Git:
 
 ```bash
-cd ~/OrangeFox # (or whichever directory has the synced manifest)
-  /bin/bash # if your Linux shell isn't bash
-  export ALLOW_MISSING_DEPENDENCIES=true
-  export FOX_BUILD_DEVICE=<device>
-  export LC_ALL="C"
-
-# for all brances
-  source build/envsetup.sh
-
-# for branches lower than 11.0
-  lunch omni_<device>-eng && mka recoveryimage
-
-# for branches lower than 11.0, with A/B partitioning
-  lunch omni_<device>-eng && mka bootimage
-
-# for the 11.0 (or higher) branch
-  lunch twrp_<device>-eng && mka adbd recoveryimage
-
-# for the 11.0 (or higher) branch, with A/B partitioning
-  lunch twrp_<device>-eng && mka adbd bootimage
-
-# for the 12.1 (or higher) branch, vendor_boot-as-recovery builds [this is highly experimental and unsupported!]
-  lunch twrp_<device>-eng && mka adbd vendorbootimage
+export FOX_STOCK_VENDOR_BOOT=/absolute/path/to/stock/vendor_boot.img
+sha256sum "$FOX_STOCK_VENDOR_BOOT"
 ```
 
-$~$
+The required stock SHA-256 is:
 
-## How to install "permanently"
+```text
+ab3bed8ad89b726419b135f95e3eb2a79093c6af126efb7aeb7389b22d8443eb
+```
 
-1. download orangefox image [here](https://github.com/mahdi-salimi05/OrangeFox-Action-Builder/releases/latest).
+Pinned build inputs and committed artifact hashes:
 
-2. dump your boot image with [mtkclient](https://github.com/bkerler/mtkclient):
+```text
+GKI 6.6 raw Image:
+a8d83641a9596bc40c6d6acaeb9c1271c5c9809cc4ff797e40907f58b2db7ffd
+
+Deterministic gzip prebuilt/kernel:
+3f264a4fa9c848fca5eb014f45a71db31588fd62dbdd8e2c1cf2f0e018b780a8
+
+Stock vendor_boot DTB, prebuilt/stock-dtb/fire-stock.dtb:
+34335f9afe4679cf8a039e46d07f43b2e090ce628d0dd43d02ad38155ee531f2
+```
+
+The raw kernel reports `6.6.58-android15-8-g70ca9d91bc7d-4k`. The complete
+stock `vendor_boot.img` remains an external build input and is ignored by Git.
 
 ```bash
-python3 mtk r boot boot.img
+export ALLOW_MISSING_DEPENDENCIES=true
+export FOX_BUILD_DEVICE=fire
+export LC_ALL=C
+source build/envsetup.sh
+lunch twrp_fire-eng
+
+# Verify the evaluated image contract before compiling.
+bash device/xiaomi/fire/tests/verify_gki_boot_contract.sh
+
+# Build vendor_boot, not boot or recovery.
+mka adbd vendorbootimage
 ```
 
-3. flash [orangefox image](https://github.com/mahdi-salimi05/OrangeFox-Action-Builder/releases/latest) to your boot_a "or boot" partition
+After the build, verify the full image before using it:
 
 ```bash
-fastboot flash boot OrangeFox-R12.1-Unofficial-fire.img
+bash device/xiaomi/fire/tests/verify_built_vendor_boot.sh \
+  out/target/product/fire/vendor_boot.img \
+  "$FOX_STOCK_VENDOR_BOOT"
 ```
 
-4. reboot to recovery
+The OrangeFox ZIP is configured for full-image installation to
+`vendor_boot_a` and `vendor_boot_b`. It does not install kernel modules or
+modify `boot`, DTBO, or any DLKM partition. The kernel remains in the existing
+GKI `boot` image.
 
-```bash
-fastboot reboot recovery
-```
-
-5. Once booted, put your stock boot image in Internalstorage , MicroSdcard or Usb-Otg then Flash stock boot image in boot partition and tick (Flash to both slots) (this will remove OF recovery form your device; you need to reflash orange fox from menu>Flash current OF).
-after that it is better to flash OF.zip file 
 ## Credits
 
 AntarcticShaurant TWRP Device tree: https://github.com/redmi-fire-devs/twrp_device_xiaomi_fire
