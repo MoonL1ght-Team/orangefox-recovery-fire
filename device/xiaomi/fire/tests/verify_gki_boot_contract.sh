@@ -99,6 +99,12 @@ grep -q "STOCK_MODULE_COUNT='167'" "$callback_path" || \
   fail 'vendor_boot callback does not enforce the 167-module stock contract'
 grep -q 'stock-module-tree.manifest' "$callback_path" || \
   fail 'vendor_boot callback does not preserve stock module metadata'
+callback_first_call_tmp="$(mktemp -d "${TMPDIR:-/tmp}/fire-callback-first.XXXXXX")"
+trap 'rm -rf "$callback_first_call_tmp"' EXIT
+TARGET_VENDOR_RAMDISK_OUT="$callback_first_call_tmp/vendor_ramdisk" \
+  bash "$callback_path" "$callback_first_call_tmp/recovery-root" --first-call >/dev/null
+[[ -d "$callback_first_call_tmp/vendor_ramdisk" ]] || \
+  fail 'first callback did not create TARGET_VENDOR_RAMDISK_OUT'
 
 stock_vendor_boot="${FOX_STOCK_VENDOR_BOOT:-}"
 [[ -f "$stock_vendor_boot" ]] || fail "stock vendor_boot input is missing: $stock_vendor_boot"

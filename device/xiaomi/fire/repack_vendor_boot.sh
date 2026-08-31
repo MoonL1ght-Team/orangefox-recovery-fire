@@ -51,7 +51,15 @@ phase="${2:-}"
 
 # OrangeFox calls the hook once while constructing the recovery root and once
 # after recovery.img has been copied into the installer staging directory.
-[[ "$phase" == '--first-call' ]] && exit 0
+if [[ "$phase" == '--first-call' ]]; then
+  vendor_ramdisk_out="${TARGET_VENDOR_RAMDISK_OUT:-}"
+  [[ -n "$vendor_ramdisk_out" ]] || \
+    die 'TARGET_VENDOR_RAMDISK_OUT is empty during first callback'
+  mkdir -p "$vendor_ramdisk_out"
+  printf 'fire vendor_boot repack: prepared vendor ramdisk directory: %s\n' \
+    "$vendor_ramdisk_out"
+  exit 0
+fi
 [[ "$phase" == '--last-call' ]] || die "unexpected callback phase: $phase"
 [[ -d "$working_dir" ]] || die "invalid installer staging directory: $working_dir"
 
