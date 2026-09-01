@@ -138,6 +138,15 @@ orangefox_module="$(find "$tmp_dir/orangefox/root" -type f -name '*.ko' -print -
 rsync -aH --numeric-ids "$tmp_dir/stock/root/" "$tmp_dir/merged/root/"
 rsync -aH --numeric-ids "$tmp_dir/orangefox/root/" "$tmp_dir/merged/root/"
 
+# The generated OrangeFox ramdisk carries an older first-stage fstab which
+# omits system_ext and all DLKM partitions. Preserve the complete stock
+# first-stage configuration: it is part of the boot contract and is required
+# for the stock vendor module loader (including the touchscreen stack).
+rm -rf "$tmp_dir/merged/root/first_stage_ramdisk"
+mkdir -p "$tmp_dir/merged/root/first_stage_ramdisk"
+rsync -aH --numeric-ids "$tmp_dir/stock/root/first_stage_ramdisk/" \
+  "$tmp_dir/merged/root/first_stage_ramdisk/"
+
 # OrangeFox may generate modules.load/modules.dep metadata even when it ships no
 # .ko payload. Preserve the complete stock module directory so dependency and
 # load-order metadata cannot be silently replaced by the recovery overlay.
@@ -145,6 +154,25 @@ rm -rf "$tmp_dir/merged/root/lib/modules"
 mkdir -p "$tmp_dir/merged/root/lib/modules"
 rsync -aH --numeric-ids "$tmp_dir/stock/root/lib/modules/" \
   "$tmp_dir/merged/root/lib/modules/"
+
+# Android 15's stock recovery ramdisk declares three AIDL HALs with VINTF
+# schema 8.0 below /system. OrangeFox 12.1's libvintf 4.0 rejects those device
+# fragments, which prevents hwservicemanager from exposing Keymaster and makes
+# keystore2 crash-loop before the UI appears. The recovery HAL processes are
+# started by init and register with servicemanager without these fragments.
+rm -f \
+  "$tmp_dir/merged/root/system/etc/vintf/manifest/android.hardware.boot-service.mtk.xml" \
+  "$tmp_dir/merged/root/system/etc/vintf/manifest/android.hardware.fastboot-service.example.xml" \
+  "$tmp_dir/merged/root/system/etc/vintf/manifest/android.hardware.health-service.example.xml"
+
+# fire's ueventd creates /dev/block/by-name but no legacy
+# /dev/block/platform/bootdevice alias. HIDL BootControl reads the misc source
+# from recovery.fstab and otherwise waits forever without registering.
+recovery_fstab="$tmp_dir/merged/root/system/etc/recovery.fstab"
+require_file "$recovery_fstab"
+sed -i \
+  's#/dev/block/platform/bootdevice/by-name/#/dev/block/by-name/#g' \
+  "$recovery_fstab"
 target_out="${TARGET_OUT:-$source_root/out/target/product/fire/system}"
 "$mkbootfs" -d "$target_out" "$tmp_dir/merged/root" \
   > "$tmp_dir/stock/ramdisk.cpio"

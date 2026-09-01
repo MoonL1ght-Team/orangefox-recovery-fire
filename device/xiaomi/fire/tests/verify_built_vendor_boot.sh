@@ -46,10 +46,15 @@ stock="${2:-${FOX_STOCK_VENDOR_BOOT:-}}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source_root="$(cd "$script_dir/../../../.." && pwd -P)"
-magiskboot="$source_root/vendor/recovery/tools/magiskboot"
-avbtool="$source_root/external/avb/avbtool.py"
+magiskboot="${MAGISKBOOT:-$source_root/vendor/recovery/tools/magiskboot}"
+avbtool="${AVBTOOL:-$source_root/external/avb/avbtool.py}"
 [[ -x "$magiskboot" ]] || die "host magiskboot is unavailable: $magiskboot"
 [[ -f "$avbtool" ]] || die "avbtool is unavailable: $avbtool"
+if [[ -x "$avbtool" ]]; then
+  avbtool_command=("$avbtool")
+else
+  avbtool_command=(python3 "$avbtool")
+fi
 
 stock_hash="$(sha256sum "$stock" | awk '{print $1}')"
 [[ "$stock_hash" == "$STOCK_VENDOR_BOOT_SHA256" ]] || \
@@ -107,15 +112,55 @@ cmp -s "$tmp_dir/stock-module-tree.manifest" \
   "$tmp_dir/final-module-tree.manifest" || \
   die 'final stock module metadata or contents changed'
 
+# The stock first-stage fstab maps and mounts system_ext plus all three DLKM
+# partitions. Replacing it with the older device-tree copy leaves vendor_dlkm
+# unmapped in recovery, so the stock touch stack can never be loaded.
+stock_first_stage_fstab="$tmp_dir/stock/root/first_stage_ramdisk/fstab.mt6768"
+final_first_stage_fstab="$tmp_dir/final/root/first_stage_ramdisk/fstab.mt6768"
+[[ -f "$stock_first_stage_fstab" ]] || die 'stock first-stage fstab is missing'
+[[ -f "$final_first_stage_fstab" ]] || die 'final first-stage fstab is missing'
+cmp -s "$stock_first_stage_fstab" "$final_first_stage_fstab" || \
+  die 'final first-stage fstab is not byte-for-byte identical to stock'
+
 if [[ ! -x "$tmp_dir/final/root/system/bin/recovery" && \
       ! -x "$tmp_dir/final/root/sbin/recovery" ]]; then
   die 'OrangeFox recovery executable is absent from the final ramdisk'
 fi
 
+# The stock Android 15 recovery fragments use VINTF schema 8.0 and declare
+# device manifests below /system. OrangeFox 12.1 ships libvintf 4.0, which
+# rejects them and prevents hwservicemanager from serving Keymaster to
+# keystore2. The AIDL recovery HALs do not require these declarations here.
+for fragment in \
+  android.hardware.boot-service.mtk.xml \
+  android.hardware.fastboot-service.example.xml \
+  android.hardware.health-service.example.xml; do
+  [[ ! -e "$tmp_dir/final/root/system/etc/vintf/manifest/$fragment" ]] || \
+    die "incompatible stock VINTF fragment remains: $fragment"
+done
+
+# Recovery's HIDL BootControl reads the misc block-device path from this
+# fstab. All four physical entries must use the ueventd-created stable by-name
+# directory rather than the absent legacy /platform/bootdevice alias.
+recovery_fstab="$tmp_dir/final/root/system/etc/recovery.fstab"
+[[ -f "$recovery_fstab" ]] || die 'final recovery.fstab is missing'
+while read -r mount_point partition; do
+  actual_source="$(awk -v mount_point="$mount_point" \
+    '$1 !~ /^#/ && $2 == mount_point { print $1; exit }' "$recovery_fstab")"
+  expected_source="/dev/block/by-name/$partition"
+  [[ "$actual_source" == "$expected_source" ]] || \
+    die "$mount_point source is '$actual_source', expected '$expected_source'"
+done <<'EOF'
+/data userdata
+/metadata md_udc
+/misc misc
+/boot boot
+EOF
+
 (
   cd "$tmp_dir/avb"
-  python3 "$avbtool" verify_image --image vendor_boot.img > verify.log
-  python3 "$avbtool" info_image --image vendor_boot.img > info.log
+  "${avbtool_command[@]}" verify_image --image vendor_boot.img > verify.log
+  "${avbtool_command[@]}" info_image --image vendor_boot.img > info.log
 ) || die 'AVB footer verification failed'
 grep -q 'Partition Name:[[:space:]]*vendor_boot' "$tmp_dir/avb/info.log" || \
   die 'AVB descriptor does not target vendor_boot'
