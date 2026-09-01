@@ -265,6 +265,16 @@ if [[ -n "${OUT:-}" ]]; then
   cp -f "$tmp_dir/final/vendor_boot.img" "$OUT/vendor_boot.img"
   if [[ -n "${FOX_OUT_NAME:-}" ]]; then
     cp -f "$tmp_dir/final/vendor_boot.img" "$OUT/$FOX_OUT_NAME.img"
+    cp -f "$tmp_dir/final/vendor_boot.img" \
+      "$OUT/$FOX_OUT_NAME-vendor_boot.img"
+    md1img_packer="$script_dir/pack_md1img.sh"
+    stock_md1img="$script_dir/prebuilt/md1img.img"
+    [[ -x "$md1img_packer" ]] || die "md1img packer is not executable: $md1img_packer"
+    require_file "$stock_md1img"
+    "$md1img_packer" \
+      "$stock_md1img" \
+      "$tmp_dir/final/vendor_boot.img" \
+      "$OUT/$FOX_OUT_NAME-md1img.img"
   fi
 fi
 

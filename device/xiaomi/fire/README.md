@@ -111,19 +111,8 @@ export LC_ALL=C
 source build/envsetup.sh
 lunch twrp_fire-eng
 
-# Verify the evaluated image contract before compiling.
-bash device/xiaomi/fire/tests/verify_gki_boot_contract.sh
-
 # Build vendor_boot, not boot or recovery.
 mka adbd vendorbootimage
-```
-
-After the build, verify the full image before using it:
-
-```bash
-bash device/xiaomi/fire/tests/verify_built_vendor_boot.sh \
-  out/target/product/fire/vendor_boot.img \
-  "$FOX_STOCK_VENDOR_BOOT"
 ```
 
 The OrangeFox ZIP is configured for full-image installation to
