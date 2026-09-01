@@ -53,7 +53,7 @@ export OF_STATUS_H=120
 
 # Flashlight. The MTK torch node updates through brightness_clone.
 export OF_FLASHLIGHT_ENABLE=1
-export OF_FL_PATH1="/tmp/fox_flashlight"
+export OF_FL_PATH1="/tmp/fox_flashlight/brightness"
 
 # Installer behavior
 export OF_NO_TREBLE_COMPATIBILITY_CHECK=1
