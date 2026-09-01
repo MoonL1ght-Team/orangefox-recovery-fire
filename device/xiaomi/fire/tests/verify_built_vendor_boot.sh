@@ -7,6 +7,8 @@ readonly VENDOR_BOOT_PARTITION_SIZE='67108864'
 readonly STOCK_MODULE_COUNT='167'
 readonly STOCK_AVB_SALT='6dbd8bb2a861c4b7d30bdbe189899ba7a4d9756793f17a84b8766973c0fd0d15'
 readonly STOCK_FINGERPRINT='Redmi/vnd_fire/fire:15/AP3A.240905.015.A2/OS2.0.208.0.VMXMIXM:user/release-keys'
+readonly TOUCH_SHIM_PATH='system/lib/modules/fire_touch_compat.ko'
+readonly TOUCH_SHIM_SHA256='8ad3a227a9dc58088385df69a00b89e9b954a13d1d74f783eb4c88e082248bc1'
 
 die() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -17,7 +19,7 @@ module_manifest() {
   local root="$1"
   (
     cd "$root"
-    find . -type f -name '*.ko' -print0 \
+    find lib/modules -type f -name '*.ko' -print0 \
       | LC_ALL=C sort -z \
       | xargs -0 -r sha256sum
   )
@@ -112,6 +114,24 @@ cmp -s "$tmp_dir/stock-module-tree.manifest" \
   "$tmp_dir/final-module-tree.manifest" || \
   die 'final stock module metadata or contents changed'
 
+touch_shim="$tmp_dir/final/root/$TOUCH_SHIM_PATH"
+[[ -f "$touch_shim" ]] || die 'recovery touch compatibility module is missing'
+touch_shim_hash="$(sha256sum "$touch_shim" | awk '{print $1}')"
+[[ "$touch_shim_hash" == "$TOUCH_SHIM_SHA256" ]] || \
+  die "recovery touch compatibility module hash mismatch: $touch_shim_hash"
+touch_loader="$tmp_dir/final/root/system/bin/init.fire.touch.sh"
+[[ -x "$touch_loader" ]] || die 'recovery touch loader is missing or not executable'
+bash -n "$touch_loader"
+init_rc="$tmp_dir/final/root/init.recovery.mt6768.rc"
+[[ -f "$init_rc" ]] || die 'final recovery init rc is missing'
+grep -Fq 'service fire-touch-loader /system/bin/init.fire.touch.sh' "$init_rc" || \
+  die 'final recovery init does not declare the touch loader service'
+grep -Fq '    start fire-touch-loader' "$init_rc" || \
+  die 'final recovery init does not start the touch loader service'
+all_module_count="$(find "$tmp_dir/final/root" -type f -name '*.ko' | wc -l)"
+[[ "$all_module_count" == $((STOCK_MODULE_COUNT + 1)) ]] || \
+  die "final ramdisk contains $all_module_count modules, expected 167 stock modules plus the touch shim"
+
 # The stock first-stage fstab maps and mounts system_ext plus all three DLKM
 # partitions. Replacing it with the older device-tree copy leaves vendor_dlkm
 # unmapped in recovery, so the stock touch stack can never be loaded.
@@ -178,3 +198,4 @@ fingerprint_count="$(grep -F -c "$fingerprint_line" "$tmp_dir/avb/info.log")"
 printf 'PASS: stock-preserving fire OrangeFox vendor_boot\n'
 printf 'SHA-256: %s\n' "$(sha256sum "$image" | awk '{print $1}')"
 printf 'Preserved: stock DTB and %s stock modules\n' "$STOCK_MODULE_COUNT"
+printf 'Added: verified recovery touch compatibility module\n'

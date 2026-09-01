@@ -139,7 +139,12 @@ raw_hash="$(gzip -dc "$kernel_path" | sha256sum | awk '{print $1}')"
 [[ "$raw_hash" == 'a8d83641a9596bc40c6d6acaeb9c1271c5c9809cc4ff797e40907f58b2db7ffd' ]] || \
   fail "raw kernel hash mismatch: $raw_hash"
 
-module_path="$(find "$device_dir" -type f -name '*.ko' -print -quit)"
-[[ -z "$module_path" ]] || fail "kernel module bundled in device tree: $module_path"
+expected_module="$device_dir/recovery/root/system/lib/modules/fire_touch_compat.ko"
+mapfile -t bundled_modules < <(find "$device_dir" -type f -name '*.ko' -print | LC_ALL=C sort)
+[[ "${#bundled_modules[@]}" == 1 ]] || \
+  fail "expected one recovery compatibility module, found ${#bundled_modules[@]}"
+[[ "${bundled_modules[0]}" == "$expected_module" ]] || \
+  fail "unexpected kernel module bundled in device tree: ${bundled_modules[0]}"
+"$device_dir/tests/verify_touch_compat_module.sh" "$expected_module"
 
 printf 'PASS: fire OrangeFox GKI vendor_boot contract\n'

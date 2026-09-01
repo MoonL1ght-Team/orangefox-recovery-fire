@@ -22,6 +22,14 @@ service vendor.keymaster-4-1-beanpod /vendor/bin/hw/android.hardware.keymaster@4
     disabled
     seclabel u:r:recovery:s0
 
+service fire-touch-loader /system/bin/init.fire.touch.sh
+    class core
+    user root
+    group root input
+    oneshot
+    disabled
+    seclabel u:r:recovery:s0
+
 on property:vendor.sys.listener.registered=true
     start vendor.gatekeeper-1-0
 
@@ -48,5 +56,6 @@ on boot
     mkdir /tmp/fox_flashlight 0755 root root
     symlink /sys/class/leds/torch-light0/brightness_clone /tmp/fox_flashlight/brightness
     symlink /sys/class/leds/torch-light0/max_brightness /tmp/fox_flashlight/max_brightness
+    start fire-touch-loader
     start boot-hal-1-2
     start health-hal-2-1

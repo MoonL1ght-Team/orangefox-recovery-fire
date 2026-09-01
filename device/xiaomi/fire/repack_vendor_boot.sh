@@ -7,6 +7,8 @@ readonly VENDOR_BOOT_PARTITION_SIZE='67108864'
 readonly STOCK_AVB_SALT='6dbd8bb2a861c4b7d30bdbe189899ba7a4d9756793f17a84b8766973c0fd0d15'
 readonly STOCK_FINGERPRINT='Redmi/vnd_fire/fire:15/AP3A.240905.015.A2/OS2.0.208.0.VMXMIXM:user/release-keys'
 readonly STOCK_MODULE_COUNT='167'
+readonly TOUCH_SHIM_PATH='system/lib/modules/fire_touch_compat.ko'
+readonly TOUCH_SHIM_SHA256='8ad3a227a9dc58088385df69a00b89e9b954a13d1d74f783eb4c88e082248bc1'
 
 die() {
   printf 'fire vendor_boot repack: ERROR: %s\n' "$*" >&2
@@ -25,7 +27,7 @@ module_manifest() {
   local root="$1"
   (
     cd "$root"
-    find . -type f -name '*.ko' -print0 \
+    find lib/modules -type f -name '*.ko' -print0 \
       | LC_ALL=C sort -z \
       | xargs -0 -r sha256sum
   )
@@ -127,9 +129,13 @@ stock_module_count="$(wc -l < "$tmp_dir/stock-modules.sha256")"
   die "expected $STOCK_MODULE_COUNT stock modules, found $stock_module_count"
 module_tree_manifest "$tmp_dir/stock/root" > "$tmp_dir/stock-module-tree.manifest"
 
-orangefox_module="$(find "$tmp_dir/orangefox/root" -type f -name '*.ko' -print -quit)"
-[[ -z "$orangefox_module" ]] || \
-  die "OrangeFox ramdisk unexpectedly contains a kernel module: $orangefox_module"
+orangefox_module_count="$(find "$tmp_dir/orangefox/root" -type f -name '*.ko' | wc -l)"
+[[ "$orangefox_module_count" == 1 ]] || \
+  die "OrangeFox ramdisk contains $orangefox_module_count modules, expected only the touch shim"
+orangefox_touch_shim="$tmp_dir/orangefox/root/$TOUCH_SHIM_PATH"
+require_file "$orangefox_touch_shim"
+[[ "$(sha256_of "$orangefox_touch_shim")" == "$TOUCH_SHIM_SHA256" ]] || \
+  die 'OrangeFox touch compatibility module hash mismatch'
 
 # Overlay the OrangeFox root on the extracted stock root before archiving. This
 # avoids duplicate cpio entries (and their size cost) while leaving stock-only
@@ -232,6 +238,23 @@ cmp -s "$tmp_dir/stock-module-tree.manifest" \
   "$tmp_dir/final-module-tree.manifest" || \
   die 'final stock module metadata or contents changed'
 
+final_touch_shim="$tmp_dir/final/root/$TOUCH_SHIM_PATH"
+require_file "$final_touch_shim"
+[[ "$(sha256_of "$final_touch_shim")" == "$TOUCH_SHIM_SHA256" ]] || \
+  die 'final touch compatibility module hash mismatch'
+final_touch_loader="$tmp_dir/final/root/system/bin/init.fire.touch.sh"
+[[ -x "$final_touch_loader" ]] || die 'final touch loader is missing or not executable'
+bash -n "$final_touch_loader"
+final_init_rc="$tmp_dir/final/root/init.recovery.mt6768.rc"
+require_file "$final_init_rc"
+grep -Fq 'service fire-touch-loader /system/bin/init.fire.touch.sh' "$final_init_rc" || \
+  die 'final recovery init does not declare the touch loader service'
+grep -Fq '    start fire-touch-loader' "$final_init_rc" || \
+  die 'final recovery init does not start the touch loader service'
+final_module_count="$(find "$tmp_dir/final/root" -type f -name '*.ko' | wc -l)"
+[[ "$final_module_count" == $((STOCK_MODULE_COUNT + 1)) ]] || \
+  die "final ramdisk contains $final_module_count modules, expected 167 stock modules plus the touch shim"
+
 final_size="$(stat -c %s "$tmp_dir/final/vendor_boot.img")"
 [[ "$final_size" == "$VENDOR_BOOT_PARTITION_SIZE" ]] || \
   die "final image size is $final_size, expected $VENDOR_BOOT_PARTITION_SIZE"
@@ -259,3 +282,4 @@ printf '%s  %s\n' "$(sha256_of "$working_dir/recovery.img")" \
   'recovery.img (stock-preserving vendor_boot)'
 printf 'fire vendor_boot repack: preserved %s stock modules and stock DTB\n' \
   "$STOCK_MODULE_COUNT"
+printf 'fire vendor_boot repack: added verified recovery touch shim\n'
