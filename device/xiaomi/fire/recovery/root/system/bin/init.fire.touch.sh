@@ -1,8 +1,8 @@
 #!/system/bin/sh
 
-# Load only the recovery-relevant part of the stock fire touch stack. Using
-# modprobe here also starts the SCP, sensor, modem and thermal dependency chain;
-# that conflicts with the generic GKI scpsys driver already active in recovery.
+# Load only the stock DLKM modules required by recovery. Using the complete
+# modules.load list would also start the SCP, sensor and modem stacks, which
+# conflict with the generic GKI drivers already active in recovery.
 
 log_touch()
 {
@@ -12,6 +12,36 @@ log_touch()
 module_loaded()
 {
     grep -q "^$1 " /proc/modules
+}
+
+load_required_module()
+{
+    module_name="$1"
+    module_path="$2"
+
+    module_loaded "$module_name" && return 0
+    insmod "$module_path" && return 0
+
+    log_touch "cannot load $module_path"
+    return 1
+}
+
+load_performance_stack()
+{
+    load_required_module sspm_v1 /vendor_dlkm/lib/modules/sspm_v1.ko &&
+    load_required_module mediatek_static_power /vendor_dlkm/lib/modules/mediatek_static_power.ko &&
+    load_required_module Upower /vendor_dlkm/lib/modules/Upower.ko &&
+    load_required_module fhctl /vendor_dlkm/lib/modules/fhctl.ko &&
+    load_required_module mtk_cpuhp /lib/modules/mtk_cpuhp.ko &&
+    load_required_module mtk_ppm_v3 /vendor_dlkm/lib/modules/mtk_ppm_v3.ko &&
+    load_required_module CPU_DVFS /vendor_dlkm/lib/modules/CPU_DVFS.ko
+}
+
+load_flashlight_stack()
+{
+    load_required_module mtk_bp_thl /vendor_dlkm/lib/modules/mtk_bp_thl.ko &&
+    load_required_module flashlight /vendor_dlkm/lib/modules/flashlight.ko &&
+    load_required_module flashlights_aw3641e /vendor_dlkm/lib/modules/flashlights-aw3641e.ko
 }
 
 slot_suffix="$(getprop ro.boot.slot_suffix)"
@@ -48,6 +78,20 @@ module_loaded miev || {
     log_touch "miev provider did not become ready"
     exit 1
 }
+
+if load_performance_stack &&
+   [ -d /sys/devices/system/cpu/cpufreq/policy0 ]; then
+    log_touch "CPU DVFS stack loaded"
+else
+    log_touch "CPU DVFS stack unavailable"
+fi
+
+if load_flashlight_stack &&
+   [ -w /sys/class/leds/torch-light0/brightness ]; then
+    log_touch "AW3641E flashlight stack loaded"
+else
+    log_touch "AW3641E flashlight stack unavailable"
+fi
 
 module_loaded xiaomi_touch || \
     insmod /vendor_dlkm/lib/modules/xiaomi_touch.ko || {

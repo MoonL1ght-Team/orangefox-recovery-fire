@@ -54,7 +54,7 @@ on property:twrp.all.users.decrypted=true
 
 on boot
     mkdir /tmp/fox_flashlight 0755 root root
-    symlink /sys/class/leds/torch-light0/brightness_clone /tmp/fox_flashlight/brightness
+    symlink /sys/class/leds/torch-light0/brightness /tmp/fox_flashlight/brightness
     symlink /sys/class/leds/torch-light0/max_brightness /tmp/fox_flashlight/max_brightness
     start fire-touch-loader
     start boot-hal-1-2
